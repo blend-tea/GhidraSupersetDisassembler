@@ -1,94 +1,98 @@
-# 利用ガイド
+# Usage guide
 
-## 入力の指定
+**English** | [日本語](usage_ja.md) | [README](../README.md)
 
-ELF／PEはローダが読み込んだメタデータから入口を取得します。ABIはELFではSystem V、PEではWindowsを既定とし、32／64bitは取込済みLanguageから決定します。既知関数の個別の呼出規約は、stack cleanupなどの解析に反映します。標準では初期化済み実行領域を解析します。対象を限定したい場合はListingの範囲を選択してから実行してください。
+## Input configuration
 
-Raw Binaryには信頼できる入口・ABIの情報がないため、実行ダイアログで次を指定します。
+ELF and PE entry points come from loader metadata. The default ABI is System V for ELF and Windows for PE; bitness comes from the imported Language. Known per-function calling conventions inform effects such as stack cleanup. The default scope is initialized executable memory. Select a range in the Listing to restrict it.
 
-| 項目 | 内容 |
+Raw Binary has no reliable entry or ABI metadata, so its dialog requires:
+
+| Field | Meaning |
 | --- | --- |
-| Entry address | 実際に処理を開始するアドレス。解析範囲内の初期化済みメモリを指定 |
-| First / Last address | 解析範囲。両端を含む |
-| ABI | `SYSV_X86`、`SYSV_X64`、`WINDOWS_X86`、`WINDOWS_X64`から取込済み命令モードに合うものを選択 |
+| Entry address | The actual start address, within initialized memory in the analysis range |
+| First / Last address | Inclusive analysis bounds |
+| ABI | `SYSV_X86`, `SYSV_X64`, `WINDOWS_X86`, or `WINDOWS_X64`, matching the imported mode |
 
-アドレスはGhidraが表示するアドレス表記を使います。RawのLanguage・32／64bitモード・ベースアドレスは取込時に指定したものを使います。
+Use Ghidra's displayed address notation. The imported Language, bitness, and image base remain in effect.
 
-## 候補一覧
+## Candidate table
 
-| 列 | 内容 |
+| Column | Meaning |
 | --- | --- |
-| Address / Bytes / Instruction | デコードした候補。通常Listingと異なる開始位置や重複も表示 |
-| Pointer definedness | 後方解析が要求するレジスタ定義条件 |
-| Stack depth | 深度・最大深度・観測数の要約 |
-| Callee-saved registers | 呼出規約で保存すべきレジスタの保存・復元解析 |
-| Selection / Details | 採用・保留とその理由、未対応／不確実な要因 |
+| Address / Bytes / Instruction | Decoded candidates, including overlapping starts not represented in the Listing |
+| Pointer definedness | Register-definition requirements from backward analysis |
+| Stack depth | Depth, maximum depth, and observation-count summaries |
+| Callee-saved registers | Preservation and restoration facts for the ABI |
+| Selection / Details | Acceptance or deferral reasons, unsupported effects, and uncertainty |
 
-フィルタ欄ではアドレス、命令名、理由などを検索できます。ヘッダをクリックすると列で並べ替えられます。行のダブルクリックで、その候補が属するProgramのListingへ移動します。重複候補は通常Listingに同時登録できないため、移動先では別の採用済み命令の内部になる場合があります。
+Filter by address, instruction, or reason; click column headers to sort. Double-click a row to navigate to its Program's Listing. Overlapping candidates cannot all be defined there, so navigation may land inside another accepted instruction.
 
-Programを変更すると一覧をstaleとして表示します。Programを切り替えるか閉じると一覧を解除します。変更後の候補を確認する場合は再実行してください。
+The table is marked stale after Program changes and cleared when switching or closing Programs. Rerun analysis to refresh its facts.
 
-## 自動反映と既存Program
+## Applying results and existing Programs
 
-解析中は通常の自動解析と直列化します。解析で採用した集合だけを反映し、その変更をきっかけに別の解析が命令を増やすことを抑止します。その後ユーザーが通常のAuto Analyzeを実行した場合は、Ghidra側の規則で結果が追加・変更されます。
+AMACE is serialized with standard autoanalysis. Only its selected set is applied, and those changes do not trigger additional autoanalysis. Running standard Auto Analyze afterward can add or change results under Ghidra's own rules.
 
-GUIの進捗・キャンセル画面はGhidraの解析マネージャが1つだけ表示します。Extension側で別のモーダルTaskLauncherは起動しません。解析中の再実行は無効になります。
+Ghidra's analysis manager owns the single modal progress/cancellation window. The extension does not launch a competing modal TaskLauncher, and repeat execution is disabled while a run is active.
 
-候補の生成中にはProgramを書き換えません。反映は一つのtransactionにまとめ、反映中の失敗やキャンセル時は元に戻します。GUIのUndo／Redoで適用を戻せます。既存の競合命令と定義済みデータは消去せず、候補側に競合理由を記録します。
+Decoding does not modify the Program. Application uses one transaction and rolls back on failure or cancellation. GUI Undo/Redo can revert or restore the application. Conflicting existing instructions and defined data are preserved, with conflicts recorded in candidate decisions.
 
-入口と非復帰性を推定できても、通常Listingへ忠実に表現できない重複や共有関数本体は残ります。命令の採用と関数の作成は別に判定し、関数本体の競合時には命令を残して関数作成を保留する場合があります。
+Entry and non-return evidence does not resolve every overlapping interpretation or shared function body. Instruction selection and function creation are separate: instructions can be retained while function creation is deferred because its body conflicts.
 
-## 解析の境界
+## Analysis boundaries
 
-- x86の32bitまたは64bit固定モードを使います。16bitモード、実行中のモード切替、自己書換え、実行時に生成されるコードはこの静的解析の対象に含めません。
-- メモリの穴や未初期化領域を架空のバイトで補完しません。範囲末尾から後続メモリへ延びる命令候補は保持しますが、自動反映には命令全体が解析範囲内に収まる必要があります。
-- 間接分岐先の完全復元や、全関数の完全回収は保証しません。外部転送・未解決の分岐先は結果に残します。
-- P-code上で扱えない効果はunknownにします。候補そのものは削除せず、未対応命令をNOPとして解析しません。
-- AMACE論文の後方解析と、Ghidraの命令選別・関数本体生成は区別されます。論文の実験値やC++研究実装との出力一致を、そのままこのJava移植の精度として主張しません。
+- Fixed 32-bit or 64-bit x86 mode is supported. This static analysis does not cover 16-bit mode, runtime mode changes, self-modifying code, or runtime-generated code.
+- Missing or uninitialized bytes are not padded. A candidate may extend past the end of the selected start range into real mapped memory, but its entire instruction must be inside the application scope to be applied.
+- Complete recovery of indirect targets or all functions is not guaranteed. External and unresolved transfers remain in the results.
+- Unsupported P-code effects become unknown. Their decoded candidates remain available and are not analyzed as fake NOPs.
+- AMACE backward analyses are distinct from the extension's Listing selection and function-body policy. Published paper metrics and output parity with the research C++ implementation are not claimed for this port.
 
-## headless引数
+## Headless arguments
 
-`RunAmace.java`はGUIと同じサービスを直接呼び出します。
+`RunAmace.java` calls the same service as the GUI.
 
-| 引数 | 内容 |
+| Argument | Meaning |
 | --- | --- |
-| `--abi NAME` | ABIを明示。Rawでは必須 |
-| `--entry ADDRESS` | 信頼する入口を追加。Rawでは必須 |
-| `--start ADDRESS --end ADDRESS` | 両端を含む解析範囲 |
-| `--no-apply` | 候補生成・解析・選別のみ実行 |
-| `--report PATH` | JSON Linesレポートの出力先。概要、全候補、未解決分岐を記録 |
+| `--abi NAME` | Explicit ABI; required for Raw Binary |
+| `--entry ADDRESS` | Additional trusted entry; required for Raw Binary |
+| `--start ADDRESS --end ADDRESS` | Inclusive scope; required for Raw Binary |
+| `--no-apply` | Decode, analyze, and select without applying |
+| `--report PATH` | JSON Lines output: metadata, all candidates, and unresolved edges |
 
-Ghidra側の`-processor`、`-cspec`、`-loader`、`-loader-baseAddr`等は`RunAmace.java`の引数ではなく、`analyzeHeadless`の取込オプションです。Rawの入口は、指定したベースアドレスで読み込まれた初期化済みメモリのうち、解析範囲内の実際の開始位置を指定します。入口がイメージベースと同じである必要はありません。
+`-processor`, `-cspec`, `-loader`, and `-loader-baseAddr` are import options for `analyzeHeadless`, not script arguments. A Raw entry is an actual start within initialized memory loaded at the chosen image base and within the scope; it need not equal the image base.
 
-## Java APIからの利用
+## Java API
 
-GUIとheadlessスクリプトは次のサービスを共有します。
+GUI and headless execution share this service:
 
 ```java
 AnalysisReport report = new AmaceAnalysisService().run(
     program, scope, new AnalysisOptions(abi, trustedEntries, true), monitor);
 ```
 
-`apply=true`の呼出しは既存のProgram transactionの外から行ってください。サービスが解析との直列化と適用transactionを管理します。SwingのEDTではなくバックグラウンドスレッドから実行します。
+Call with `apply=true` outside an existing Program transaction. The service manages serialization and application transactions. Invoke it on a background thread, not Swing's EDT.
 
-GhidraScriptは初期transactionを持つため、同梱の`RunAmace.java`は`end(true)`でそのtransactionを閉じてからサービスを呼びます。独自スクリプトも、サービスへ変更のrollbackを委ねられるよう、開始済みtransactionの中へ適用処理を入れないでください。
+GhidraScript starts an initial transaction. The bundled `RunAmace.java` closes it with `end(true)` before calling the service. Custom scripts must also allow the service to own application rollback rather than nesting it inside an unrelated transaction.
 
-## 検証の実行
+## Running validation
 
-Java 25とGhidra 12.2を指定してビルドし、解析・選別のgolden／propertyテストを実行します。
+Configure Java 25 and Ghidra 12.2, then build and run the core golden/property suites:
 
 ```sh
 ./gradlew clean buildExtension coreTest
 ```
 
-パッケージ化したZIPに対する統合テストは次のコマンドで実行します。Python 3で小さなバイト列からELF・PE・Rawの32／64bit fixtureを生成し、`analyzeHeadless -noanalysis`で6通りを検証します。通常のユーザー設定や既存プロジェクトへExtensionをインストールせず、一時領域の外部モジュールとして読み込みます。
+Test the packaged ZIP with:
 
 ```sh
 scripts/test-headless.sh
 ```
 
-対象には、全位置のデコード、重複候補、正確なListingの採用集合、関数本体、既存定義の保護、キャンセル・失敗時のrollback、再実行、Undo／Redoが含まれます。`AMACE_KEEP_TEST_OUTPUT=1`を付けると、一時プロジェクトとログを残して確認できます。
+Python 3 generates small known ELF, PE, and Raw fixtures in both CPU widths. The runner uses `analyzeHeadless -noanalysis` and an isolated external module in temporary projects, without installing into your normal Ghidra configuration.
 
-`ghidra_scripts/AmaceLifterTest.java`は実際のSLEIGHデコーダを使った追加の検証です。高位アドレス、範囲末尾、未初期化メモリと穴、CALL／RETの正規化、部分レジスタ、P-code内分岐、未知USEROP、呼出規約を扱います。
+Coverage includes exhaustive decoding, overlapping candidates, the exact accepted Listing set, function bodies, existing definitions, rollback, repeat execution, and Undo/Redo. Set `AMACE_KEEP_TEST_OUTPUT=1` to retain temporary output and logs.
 
-開発時のGUI smokeでは、仮想X11上でGhidra 12.2のPluginToolと`AmacePlugin`を生成し、Programの有効化、Raw設定画面、8列の候補テーブル、非同期ロード、フィルタ部品、Program consumerの解放と破棄を確認しています。
+The runner also checks the packaged production CLI/JSONL and real SLEIGH cases in `ghidra_scripts/AmaceLifterTest.java`: high addresses, range ends, memory holes, CALL/RET normalization, register aliases, P-code branches, unknown USEROPs, and calling conventions.
+
+With an X11 `DISPLAY`, run `./gradlew guiTest` to check actual GUI execution, single-modal-window ownership, reentry protection, completion, and cancellation. See the [validation report](VALIDATION.md) for recorded results and evaluation limits.

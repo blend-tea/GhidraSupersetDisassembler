@@ -1,27 +1,29 @@
 # GhidraSupersetDisassembler (GhidraAmace)
 
-Ghidra 12.2向けのx86／x86-64 Superset Disassembly Extensionです。各バイト位置から命令候補を生成し、AMACE論文の後方解析をJava／P-codeで実装します。重なった候補を保持しながら、根拠のある命令と関数を通常のListingへ自動反映します。
+**English** | [日本語](README_ja.md)
 
-[Superset Disassembly（Baumanら、NDSS 2018）](https://personal.utdallas.edu/~hamlen/bauman18ndss.pdf)と[AMACE（Nguyenら、PLDI 2026）](https://doi.org/10.1145/3808292)に基づく独立した実装です。Google Researchが紹介するAMACEの後方解析をGhidraへ適用し、入口候補の生成とListingへ反映する命令の選別には本Extension独自の規則を用います。GoogleやGhidra開発元の公式製品ではありません。
+A superset disassembly extension for Ghidra 12.2 and x86/x86-64. It decodes instructions at every byte offset, applies backward analyses based on AMACE using Java and P-code, preserves overlapping candidates, and automatically adds selected instructions and functions to the standard Listing.
 
-## 動作環境
+This is an independent implementation based on [Superset Disassembly (Bauman et al., NDSS 2018)](https://personal.utdallas.edu/~hamlen/bauman18ndss.pdf) and [AMACE (Nguyen et al., PLDI 2026)](https://doi.org/10.1145/3808292). It brings the AMACE backward analyses featured by Google Research into Ghidra. Function-entry candidate generation and the final Listing selection policy are specific to this extension. This is not an official Google or Ghidra project.
+
+## Requirements
 
 - Ghidra **12.2**
-- Java **25**、ビルド時はGradle **9.1以降**
-- x86 **32bit／64bit固定モード**のELF、PE、Raw Binary
+- Java **25**; Gradle **9.1 or later** for building
+- ELF, PE, or Raw Binary using a fixed **32-bit or 64-bit x86 mode**
 
-解析はGhidra内で完結します。AMACE原実装、Python、Docker、外部ネイティブ解析器は実行時に不要です。
+Analysis runs inside Ghidra. The original AMACE backend, Python, Docker, and an external native analysis engine are not runtime dependencies.
 
-## インストールと実行
+## Installation and use
 
-1. [GitHub Releases](https://github.com/blend-tea/GhidraSupersetDisassembler/releases)からExtension ZIPを取得します。GhidraのProjectウィンドウで **File → Install Extensions** を開き、そのZIPを追加して再起動します。自分でビルドした場合は`dist/`のZIPを使います。
-2. CodeBrowserの **File → Configure → Configure All Plugins** で`AmacePlugin`を有効にします。
-3. バイナリを取り込み、通常の **Auto Analyzeは開始せず**、**Tools → AMACE → Analyze and Apply** を実行します。
-4. 処理後の **AMACE Superset Candidates** 一覧で、採用／保留理由と解析結果を確認します。列の並べ替え、文字列フィルタ、行のダブルクリックによるListingへの移動が使えます。
+1. Download the extension ZIP from [GitHub Releases](https://github.com/blend-tea/GhidraSupersetDisassembler/releases). In the Ghidra Project window, open **File → Install Extensions**, add the ZIP, and restart Ghidra. For a local build, use the ZIP in `dist/`.
+2. In CodeBrowser, enable `AmacePlugin` under **File → Configure → Configure All Plugins**.
+3. Import a binary and **decline the standard Auto Analyze prompt**, then run **Tools → AMACE → Analyze and Apply**.
+4. Inspect the **AMACE Superset Candidates** table. It supports sorting, text filtering, and double-click navigation to the Listing, with analysis facts and reasons for accepting or deferring each candidate.
 
-ELF／PEは初期化済み実行領域を対象とします。Listingで範囲を選択してから実行すると、その範囲を使います。Raw Binaryでは、取込時に正しいLanguage・Compiler Spec・ベースアドレスを指定し、実行時のダイアログで入口・解析範囲・ABIを指定してください。
+ELF and PE default to initialized executable memory. Select a range in the Listing before running to restrict the scope. For Raw Binary, choose the correct Language, Compiler Spec, and base address during import, then supply an entry address, analysis range, and ABI in the extension's dialog.
 
-## ビルド
+## Build
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
@@ -29,11 +31,11 @@ export GHIDRA_INSTALL_DIR=/path/to/ghidra_12.2_PUBLIC
 ./gradlew clean buildExtension coreTest
 ```
 
-ZIPは`dist/`へ出力されます。`coreTest`はGhidraに依存しない解析・命令選別の回帰テストを実行します。
+The extension ZIP is written to `dist/`. `coreTest` runs the semantic-analysis and instruction-selection regression suites without starting Ghidra.
 
-## headless実行
+## Headless use
 
-ExtensionをインストールしたGhidraから、GUIと同じ解析サービスを呼び出せます。標準解析を開始しないよう、`-noanalysis`を指定します。
+The bundled script calls the same service as the GUI. Install the extension first and use `-noanalysis` to prevent standard autoanalysis from running before AMACE.
 
 ```sh
 "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" /path/to/projects AmaceDemo \
@@ -42,32 +44,32 @@ ExtensionをインストールしたGhidraから、GUIと同じ解析サービ�
   -postScript RunAmace.java --report /path/to/report.jsonl
 ```
 
-Raw Binaryでは、`-loader BinaryLoader -processor x86:LE:64:default -loader-baseAddr 100000`等の取込設定に加え、スクリプトへ`--abi SYSV_X64 --entry 100000 --start 100000 --end 100fff`を指定します。アドレスは16進表記、範囲末尾は含みます。`--no-apply`はProgramへ反映せず結果だけを生成します。レポートは先頭行に概要、後続行に全候補と未解決分岐を並べたJSON Lines形式です。
+For Raw Binary, provide import options such as `-loader BinaryLoader -processor x86:LE:64:default -loader-baseAddr 100000`, and pass `--abi SYSV_X64 --entry 100000 --start 100000 --end 100fff` to the script. Addresses are hexadecimal and the range end is inclusive. `--no-apply` computes results without applying them to the Program. JSON Lines reports contain a metadata record followed by all candidates and unresolved edges.
 
-## 解析結果の意味
+## Interpreting results
 
-- Supersetの候補は、指定された命令モードで有効にデコードできた全開始位置を含みます。通常のListingには、その中から競合しない候補を選んで登録します。
-- 入口情報、採用済みコードからの直接呼出し、AMACEによる関数開始点の推定の順で採用します。同順位の重複は保留し、短い命令や小さいアドレスを優先して決着させません。
-- 未解決の間接分岐、未対応P-code、解析不能なスタック操作はunknownとして残します。unknownだけを根拠に新しい関数や非復帰呼出しを確定しません。
-- 既存の競合命令・定義済みデータ・関数名・シグネチャは保持します。新規取込後の使用を基本とし、既存Programを破壊的に再構築する機能は提供しません。
-- Listingへの選別は本Extension独自の統合規則です。AMACEの関数開始点推定を、全命令の正しさを証明するものとして扱いません。
+- The superset retains every successfully decoded start offset in the selected instruction mode. The standard Listing receives a non-overlapping subset.
+- Selection prioritizes trusted entries, direct callees reached from accepted code, and then AMACE-inferred entries. Equal-priority overlaps are deferred; shorter instructions or lower addresses do not break ties.
+- Unresolved indirect transfers, unsupported P-code, and unrecognized stack effects remain unknown. Unknown facts alone do not establish a new function entry or a non-returning call.
+- Existing conflicting instructions, defined data, function names, and signatures are preserved. The intended workflow is a freshly imported Program; destructive reconstruction of existing analysis is not provided.
+- Listing selection is the extension's own integration policy. AMACE function-entry evidence is not proof that every selected instruction is correct.
 
-操作と制約の詳細は[利用ガイド](docs/usage.md)を参照してください。
+See the [usage guide](docs/usage.md) for options, APIs, and limitations.
 
-## 大きなバイナリとメモリ使用量
+## Large binaries and memory use
 
-全開始位置の命令候補・P-code・解析結果をメモリに保持するため、大きな入力では`OutOfMemoryError: Java heap space`になる場合があります。現版は大規模入力向けの省メモリ化が未実施です。解析範囲を選択して限定するか、利用可能なRAMに合わせて`GHIDRA_MAXMEM`を設定し、Ghidraを再起動してください。headless専用の上限には`GHIDRA_HEADLESS_MAXMEM`も使えます。ヒープの増量だけで全サイズの入力を処理できるという保証はありません。
+Candidates, P-code, and analysis results for all offsets are kept in memory. Large inputs can exhaust the Java heap with `OutOfMemoryError: Java heap space`; this version has not been optimized for large-input memory use. Restrict the analysis range or set `GHIDRA_MAXMEM` according to available RAM and restart Ghidra. `GHIDRA_HEADLESS_MAXMEM` sets a headless-only limit. Increasing the heap does not guarantee that every input size will fit.
 
-小さな既知バイト列を用いた検証結果と評価範囲は[検証記録](docs/VALIDATION.md)に記載しています。論文の精度・性能値をこの移植版の測定結果として主張しません。
+The [validation report](docs/VALIDATION.md) describes testing on small known byte sequences and its limits. Accuracy and performance figures from the research papers are not measurements of this implementation.
 
-## 参考文献
+## References and attribution
 
-- **AMACE**: Huan Nguyen, Soumyakant Priyadarshan, ChenCheng Jiang, R. Sekar. *Analyzing Bytes: Pre-Disassembly Static Binary Analysis*. Proceedings of the ACM on Programming Languages (PLDI), 2026. [DOI: 10.1145/3808292](https://doi.org/10.1145/3808292) / [論文PDF](https://www.seclab.cs.sunysb.edu/seclab/pubs/amace.pdf) / [Google Researchの紹介](https://research.google/pubs/analyzing-bytes-pre-disassembly-static-binary-analysis/) / [著者の研究実装](https://github.com/nhuhuan/amace)
-- **Superset Disassembly**: Erik Bauman, Zhiqiang Lin, Kevin W. Hamlen. *Superset Disassembly: Statically Rewriting x86 Binaries Without Heuristics*. NDSS, 2018. [論文PDF](https://personal.utdallas.edu/~hamlen/bauman18ndss.pdf) / [著者のMultiverse実装](https://github.com/utds3lab/multiverse)
-- **Ghidra**: [公式リポジトリ](https://github.com/NationalSecurityAgency/ghidra)。SLEIGH、P-code、PseudoDisassemblerおよびExtension APIを利用しています。
+- **AMACE**: Huan Nguyen, Soumyakant Priyadarshan, ChenCheng Jiang, R. Sekar. *Analyzing Bytes: Pre-Disassembly Static Binary Analysis*. Proceedings of the ACM on Programming Languages (PLDI), 2026. [DOI: 10.1145/3808292](https://doi.org/10.1145/3808292) / [Paper PDF](https://www.seclab.cs.sunysb.edu/seclab/pubs/amace.pdf) / [Google Research overview](https://research.google/pubs/analyzing-bytes-pre-disassembly-static-binary-analysis/) / [Authors' research implementation](https://github.com/nhuhuan/amace)
+- **Superset Disassembly**: Erik Bauman, Zhiqiang Lin, Kevin W. Hamlen. *Superset Disassembly: Statically Rewriting x86 Binaries Without Heuristics*. NDSS, 2018. [Paper PDF](https://personal.utdallas.edu/~hamlen/bauman18ndss.pdf) / [Authors' Multiverse implementation](https://github.com/utds3lab/multiverse)
+- **Ghidra**: [Official repository](https://github.com/NationalSecurityAgency/ghidra). This extension uses SLEIGH, P-code, PseudoDisassembler, and the Extension API.
 
-本Extensionは論文に基づく独立したJava実装です。研究用C++／OCamlバックエンドは同梱しません。
+This is an independently written Java implementation. The research C++/OCaml backend is not bundled.
 
-## ライセンス
+## License
 
-本リポジトリの既存の[MIT License](LICENSE)を適用します。Gradle Wrapperの生成ファイルは元のApache-2.0ライセンスを保持し、[ライセンス本文](licenses/Apache-2.0.txt)を同梱しています。Ghidraは別途入手する依存ソフトウェアです。
+The repository's existing [MIT License](LICENSE) applies. Generated Gradle Wrapper files retain their original Apache-2.0 license; its [full text](licenses/Apache-2.0.txt) is included. Ghidra is a separate dependency.
