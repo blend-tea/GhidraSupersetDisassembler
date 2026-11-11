@@ -18,10 +18,11 @@ import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
-import ghidra.util.task.Task;
-import ghidra.util.task.TaskLauncher;
 import ghidra.util.task.TaskMonitor;
+import ghidra.util.task.TaskMonitorAdapter;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.swing.SwingUtilities;
 
 @PluginInfo(status = PluginStatus.RELEASED, packageName = CorePluginPackage.NAME,
@@ -32,7 +33,12 @@ import javax.swing.SwingUtilities;
 public final class AmacePlugin extends ProgramPlugin {
     private final DockingAction analyzeAction;
     private final AmaceResultsProvider results;
-    private volatile Task runningTask;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "AMACE analysis");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private volatile TaskMonitor runningMonitor;
     private volatile Program runningProgram;
     private volatile boolean disposed;
 
@@ -42,7 +48,7 @@ public final class AmacePlugin extends ProgramPlugin {
         analyzeAction = new DockingAction("Analyze and Apply", getName()) {
             @Override public void actionPerformed(ActionContext context) { analyze(); }
             @Override public boolean isEnabledForContext(ActionContext context) {
-                return !disposed && currentProgram != null && !currentProgram.isClosed() && runningTask == null;
+                return !disposed && currentProgram != null && !currentProgram.isClosed() && runningMonitor == null;
             }
         };
         analyzeAction.setMenuBarData(new MenuData(new String[] { "Tools", "AMACE", "Analyze and Apply" }));
@@ -55,7 +61,7 @@ public final class AmacePlugin extends ProgramPlugin {
 
     private void analyze() {
         Program program = currentProgram;
-        if (program == null || program.isClosed() || runningTask != null) return;
+        if (program == null || program.isClosed() || runningMonitor != null) return;
         var scope = currentSelection != null && !currentSelection.isEmpty()
                 ? new AddressSet(currentSelection) : AmaceAnalysisService.defaultScope(program);
         AnalysisOptions options = AnalysisOptions.defaults();
@@ -71,13 +77,23 @@ public final class AmacePlugin extends ProgramPlugin {
             Msg.showInfo(this, results.getComponent(), "AMACE", "Select initialized memory, or import a program with executable memory.");
             return;
         }
+        startAnalysis(program, scope, options);
+    }
+
+    /** AutoAnalysisManager owns the sole modal progress window. Never wrap it in TaskLauncher. */
+    void startAnalysis(Program program, AddressSet scope, AnalysisOptions options) {
+        if (!SwingUtilities.isEventDispatchThread()) throw new IllegalStateException("Start AMACE on the EDT");
+        if (disposed || runningMonitor != null || program.isClosed()) return;
         final AddressSet capturedScope = new AddressSet(scope);
         final AnalysisOptions capturedOptions = options;
         final Object consumer = new Object();
         if (!program.addConsumer(consumer)) return;
         runningProgram = program;
-        var task = new Task("AMACE Superset Analysis", true, true, true) {
-            @Override public void run(TaskMonitor monitor) {
+        TaskMonitor monitor = new TaskMonitorAdapter(true);
+        runningMonitor = monitor;
+        updateEnabled();
+        try {
+            executor.execute(() -> {
                 AnalysisReport report = null;
                 List<CandidateRow> rows = null;
                 Exception failure = null;
@@ -106,18 +122,15 @@ public final class AmacePlugin extends ProgramPlugin {
                     }
                     finally {
                         program.release(consumer);
-                        runningTask = null;
+                        runningMonitor = null;
                         runningProgram = null;
                         if (!disposed) updateEnabled();
                     }
                 });
-            }
-        };
-        runningTask = task;
-        updateEnabled();
-        try { new TaskLauncher(task, tool.getToolFrame()); }
+            });
+        }
         catch (RuntimeException ex) {
-            runningTask = null; runningProgram = null;
+            runningMonitor = null; runningProgram = null;
             program.release(consumer);
             updateEnabled();
             throw ex;
@@ -125,7 +138,7 @@ public final class AmacePlugin extends ProgramPlugin {
     }
 
     private void updateEnabled() {
-        analyzeAction.setEnabled(!disposed && currentProgram != null && !currentProgram.isClosed() && runningTask == null);
+        analyzeAction.setEnabled(!disposed && currentProgram != null && !currentProgram.isClosed() && runningMonitor == null);
         tool.contextChanged(null);
     }
 
@@ -139,14 +152,15 @@ public final class AmacePlugin extends ProgramPlugin {
     }
 
     @Override protected void programClosed(Program program) {
-        if (runningProgram == program && runningTask != null) runningTask.cancel();
+        if (runningProgram == program && runningMonitor != null) runningMonitor.cancel();
         if (results != null && results.getProgram() == program) results.clear();
         if (analyzeAction != null) updateEnabled();
     }
 
     @Override protected void dispose() {
         disposed = true;
-        if (runningTask != null) runningTask.cancel();
+        if (runningMonitor != null) runningMonitor.cancel();
+        executor.shutdown();
         results.dispose();
         tool.removeAction(analyzeAction);
         super.dispose();

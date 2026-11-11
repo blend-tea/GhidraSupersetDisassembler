@@ -25,3 +25,15 @@ tasks.named('test') {
 tasks.named('buildExtension') {
     exclude '.git/**'
 }
+tasks.register('guiTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs real GUI analysis and modal-window lifecycle regressions (requires DISPLAY).'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'amace.ui.GuiExecutionTest'
+    args ghidraDir.get()
+    systemProperty 'user.home', layout.buildDirectory.dir('gui-test/home').get().asFile.absolutePath
+    systemProperty 'application.settingsdir', layout.buildDirectory.dir('gui-test/settings').get().asFile.absolutePath
+    systemProperty 'application.cachedir', layout.buildDirectory.dir('gui-test/cache').get().asFile.absolutePath
+    systemProperty 'application.tempdir', layout.buildDirectory.dir('gui-test/tmp').get().asFile.absolutePath
+}
