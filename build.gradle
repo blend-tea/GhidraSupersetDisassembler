@@ -1,0 +1,27 @@
+def ghidraDir = providers.gradleProperty('GHIDRA_INSTALL_DIR').orElse(providers.environmentVariable('GHIDRA_INSTALL_DIR'))
+if (!ghidraDir.isPresent()) {
+    throw new GradleException('Set GHIDRA_INSTALL_DIR to the Ghidra 12.2 installation directory.')
+}
+apply from: new File(ghidraDir.get(), 'support/buildExtension.gradle').canonicalPath
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('coreTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs independent semantic-domain and conservative-selection regression tests.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'amace.core.AllCoreTests'
+    enableAssertions = true
+}
+tasks.named('check') { dependsOn 'coreTest' }
+tasks.named('test') {
+    // Tests are executable golden/property suites, without a downloaded test engine.
+    dependsOn 'coreTest'
+    failOnNoDiscoveredTests = false
+}
+tasks.named('buildExtension') {
+    exclude '.git/**'
+}

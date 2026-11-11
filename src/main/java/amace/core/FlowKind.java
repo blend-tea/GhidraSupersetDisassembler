@@ -1,0 +1,3 @@
+package amace.core;
+
+public enum FlowKind { NORMAL, CONDITIONAL_JUMP, JUMP, CALL, INDIRECT_CALL, INDIRECT_JUMP, RETURN, HALT }
