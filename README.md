@@ -23,6 +23,18 @@ Analysis runs inside Ghidra. The original AMACE backend, Python, Docker, and an 
 
 ELF and PE default to initialized executable memory. Select a range in the Listing before running to restrict the scope. For Raw Binary, choose the correct Language, Compiler Spec, and base address during import, then supply an entry address, analysis range, and ABI in the extension's dialog.
 
+### Before and after: recognizing previously undefined code
+
+The screenshots below show the same region starting at `0x14000103a`. Select the target range in the Listing if you want to limit analysis, then run **Tools → AMACE → Analyze and Apply**. Once analysis finishes, inspect the Listing and the candidate table.
+
+**Before AMACE:** the region is shown as undefined bytes (`??`) under `DAT_14000103a`.
+
+![Before AMACE: undefined bytes at 0x14000103a](docs/images/amace-before.png)
+
+**After AMACE:** Ghidra shows `FUN_14000103a` with instructions such as `PUSH RBP`, `MOV RBP,RSP`, and `SUB RSP,0x10`, followed by conditional and unconditional branches with destination labels. This example shows how applying the selected candidates makes previously undefined code readable in the standard Listing.
+
+![After AMACE: recognized function, instructions, and branch labels at 0x14000103a](docs/images/amace-after.png)
+
 ## Build
 
 ```sh

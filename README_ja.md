@@ -23,6 +23,18 @@ Ghidra 12.2向けのx86／x86-64 Superset Disassembly Extensionです。各バ�
 
 ELF／PEは初期化済み実行領域を対象とします。Listingで範囲を選択してから実行すると、その範囲を使います。Raw Binaryでは、取込時に正しいLanguage・Compiler Spec・ベースアドレスを指定し、実行時のダイアログで入口・解析範囲・ABIを指定してください。
 
+### 適用前後の例：未定義領域を命令として認識する
+
+次の画像は、`0x14000103a`から始まる同じ領域の比較です。範囲を限定する場合はListingで対象領域を選択し、**Tools → AMACE → Analyze and Apply**を実行してください。解析終了後、Listingと候補一覧を確認します。
+
+**AMACE適用前：** `DAT_14000103a`の領域が未定義バイト（`??`）として表示されています。
+
+![AMACE適用前：0x14000103aの領域が未定義バイトとして表示されている](docs/images/amace-before.png)
+
+**AMACE適用後：** `FUN_14000103a`が作成され、`PUSH RBP`、`MOV RBP,RSP`、`SUB RSP,0x10`などの命令や、分岐命令と分岐先ラベルが表示されています。採用した候補の反映によって、未定義だった領域を通常のListingで命令列として読めるようになった例です。
+
+![AMACE適用後：0x14000103aからの関数・命令列・分岐先ラベルが表示されている](docs/images/amace-after.png)
+
 ## ビルド
 
 ```sh
